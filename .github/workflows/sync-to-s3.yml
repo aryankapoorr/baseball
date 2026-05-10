@@ -1,11 +1,12 @@
-name: Sync composure assets to S3
+name: Sync project assets to S3
 
 on:
   push:
     branches: [main]
     paths:
-      - 'composure/composure.ipynb'
-      - 'composure/results/composure_scores_*.csv'
+      - 'projects.json'
+      - '**/*.ipynb'
+      - '**/results/*.csv'
 
 jobs:
   sync:
@@ -20,26 +21,56 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Upload notebook
+      - name: Sync all projects
         run: |
-          aws s3 cp composure/composure.ipynb \
-            s3://outside-baseball-composure/notebooks/composure.ipynb \
-            --cache-control "public, max-age=300"
+          python3 - <<'EOF'
+          import json, subprocess, os, glob
 
-      - name: Upload CSVs
-        run: |
-          aws s3 cp composure/results/ s3://outside-baseball-composure/data/ \
-            --recursive \
-            --exclude "*" \
-            --include "composure_scores_*.csv" \
-            --cache-control "public, max-age=300"
+          with open("projects.json") as f:
+            projects = json.load(f)
 
-      - name: Update seasons manifest
-        run: |
-          seasons=$(ls composure/results/composure_scores_*.csv \
-            | grep -oE '[0-9]{4}' | sort -n \
-            | python3 -c "import sys,json; print(json.dumps([int(l) for l in sys.stdin]))")
-          echo "{\"seasons\":$seasons}" | aws s3 cp - \
-            s3://outside-baseball-composure/seasons.json \
-            --content-type "application/json" \
-            --cache-control "public, max-age=300"
+          for p in projects:
+            slug        = p["slug"]
+            bucket      = p["bucket"]
+            notebook    = p["notebook"]
+            data_dir    = p["dataDir"]
+            data_pattern = p["dataPattern"]
+
+            print(f"\n── {slug} → s3://{bucket}")
+
+            # Upload notebook
+            subprocess.run([
+              "aws", "s3", "cp", notebook,
+              f"s3://{bucket}/notebooks/{os.path.basename(notebook)}",
+              "--cache-control", "public, max-age=300"
+            ], check=True)
+
+            # Upload CSVs
+            subprocess.run([
+              "aws", "s3", "cp", data_dir, f"s3://{bucket}/data/",
+              "--recursive",
+              "--exclude", "*",
+              "--include", data_pattern,
+              "--cache-control", "public, max-age=300"
+            ], check=True)
+
+            # Regenerate seasons.json from available CSVs
+            csv_files = sorted(glob.glob(os.path.join(data_dir, data_pattern)))
+            seasons = sorted(set(
+              int(s) for f in csv_files
+              for s in [os.path.basename(f).replace(".csv", "").split("_")[-1]]
+              if s.isdigit()
+            ))
+            seasons_json = json.dumps({"seasons": seasons})
+            proc = subprocess.run(
+              ["aws", "s3", "cp", "-",
+               f"s3://{bucket}/seasons.json",
+               "--content-type", "application/json",
+               "--cache-control", "public, max-age=300"],
+              input=seasons_json.encode(),
+              check=True
+            )
+            print(f"   seasons: {seasons}")
+
+          print("\nDone.")
+          EOF

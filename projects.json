@@ -1,0 +1,9 @@
+[
+  {
+    "slug": "composure",
+    "bucket": "outside-baseball-composure",
+    "notebook": "composure/composure.ipynb",
+    "dataDir": "composure/results/",
+    "dataPattern": "composure_scores_*.csv"
+  }
+]
