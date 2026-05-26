@@ -5,5 +5,12 @@
     "notebook": "composure/composure.ipynb",
     "dataDir": "composure/results/",
     "dataPattern": "composure_scores_*.csv"
+  },
+  {
+    "slug": "stamina",
+    "bucket": "outside-baseball-stamina",
+    "notebook": "stamina/stamina.ipynb",
+    "dataDir": "stamina/results/",
+    "dataPattern": "stamina_scores_*.csv"
   }
 ]
